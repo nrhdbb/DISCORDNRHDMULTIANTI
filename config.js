@@ -53,14 +53,14 @@ module.exports = {
   },
 
   lavalink: {
-    nodes: [
+    nodes: process.env.LAVALINK_HOST ? [
       {
-        name: "Main Node",
-        host: "lavalink.jirayu.net",
-        port: 13592,
-        password: "youshallnotpass",
-        secure: false
+        name: process.env.LAVALINK_NAME || "Main Node",
+        host: process.env.LAVALINK_HOST,
+        port: Number(process.env.LAVALINK_PORT) || 2333,
+        password: process.env.LAVALINK_PASSWORD || "youshallnotpass",
+        secure: process.env.LAVALINK_SECURE === "true"
       }
-    ]
+    ] : []
   }
 };
