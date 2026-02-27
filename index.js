@@ -96,11 +96,15 @@ Object.defineProperty = function(obj, prop, descriptor) {
 const queue247 = new Set();
 const guildVolumes = new Map();
 
-client.on('ready', async () => {
+client.on('clientReady', async () => {
   console.log(`${config.emojis.success} Logged in as ${client.user.tag}`);
 
   try {
-    riffy.init(client.user.id);
+    if (config.lavalink.nodes.length > 0) {
+      riffy.init(client.user.id);
+    } else {
+      console.warn(`${config.emojis.error} Lavalink is not configured. Set environment variables LAVALINK_HOST, LAVALINK_PORT, LAVALINK_PASSWORD to enable music.`);
+    }
   } catch (error) {
     console.error(`${config.emojis.error} Failed to initialize Riffy:`, error);
   }
@@ -143,22 +147,26 @@ client.on('ready', async () => {
   console.log(`${config.emojis.success} Slash commands registered globally`);
 });
 
-client.on('raw', (d) => riffy.updateVoiceState(d));
+if (config.lavalink.nodes.length > 0) {
+  client.on('raw', (d) => riffy.updateVoiceState(d));
+}
 
-riffy.on('nodeConnect', (node) => {
-  console.log(`${config.emojis.success} Node ${node.name} connected`);
-  isLavalinkConnected = true;
-});
+if (config.lavalink.nodes.length > 0) {
+  riffy.on('nodeConnect', (node) => {
+    console.log(`${config.emojis.success} Node ${node.name} connected`);
+    isLavalinkConnected = true;
+  });
 
-riffy.on('nodeError', (node, error) => {
-  console.error(`${config.emojis.error} Node ${node.name} error:`, error);
-  isLavalinkConnected = false;
-});
+  riffy.on('nodeError', (node, error) => {
+    console.error(`${config.emojis.error} Node ${node.name} error:`, error);
+    isLavalinkConnected = false;
+  });
 
-riffy.on('nodeDisconnect', (node) => {
-  console.log(`${config.emojis.error} Node ${node.name} disconnected`);
-  isLavalinkConnected = false;
-});
+  riffy.on('nodeDisconnect', (node) => {
+    console.log(`${config.emojis.error} Node ${node.name} disconnected`);
+    isLavalinkConnected = false;
+  });
+}
 
 const nowPlayingMessages = new Map();
 
@@ -449,7 +457,7 @@ function createQueueContainer(player, guild, user) {
 
 function createStatsContainer() {
   const uptime = formatTime(client.uptime);
-  const players = riffy.players.size;
+  const players = riffy && riffy.players ? riffy.players.size : 0;
   const totalUsers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
   const memory = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
 
@@ -509,40 +517,42 @@ function createHelpContainer() {
     );
 }
 
-riffy.on('trackStart', async (player, track) => {
-  const channel = client.channels.cache.get(player.textChannel);
-  if (!channel) return;
+if (config.lavalink.nodes.length > 0) {
+  riffy.on('trackStart', async (player, track) => {
+    const channel = client.channels.cache.get(player.textChannel);
+    if (!channel) return;
 
-  const container = createNowPlayingContainer(player, track);
+    const container = createNowPlayingContainer(player, track);
 
-  try {
-    const msg = await channel.send({ components: [container], flags: MessageFlags.IsPersistent | MessageFlags.IsComponentsV2 });
-    nowPlayingMessages.set(player.guildId, msg);
-  } catch (err) {
-    console.error('Failed to send Now Playing message:', err);
-  }
-});
+    try {
+      const msg = await channel.send({ components: [container], flags: MessageFlags.IsPersistent | MessageFlags.IsComponentsV2 });
+      nowPlayingMessages.set(player.guildId, msg);
+    } catch (err) {
+      console.error('Failed to send Now Playing message:', err);
+    }
+  });
 
-riffy.on('queueEnd', async (player) => {
-  const channel = client.channels.cache.get(player.textChannel);
+  riffy.on('queueEnd', async (player) => {
+    const channel = client.channels.cache.get(player.textChannel);
 
-  await deleteNowPlayingMessage(player.guildId);
+    await deleteNowPlayingMessage(player.guildId);
 
-  if (queue247.has(player.guildId)) {
+    if (queue247.has(player.guildId)) {
+      if (channel) {
+        const container = createSimpleContainerNoButtons('24/7 Mode', 'Queue ended but staying in 24/7 mode', config.emojis.info);
+        await channel.send({ components: [container], flags: MessageFlags.IsPersistent | MessageFlags.IsComponentsV2 });
+      }
+      return;
+    }
+
     if (channel) {
-      const container = createSimpleContainerNoButtons('24/7 Mode', 'Queue ended but staying in 24/7 mode', config.emojis.info);
+      const container = createSimpleContainerNoButtons('Queue Ended', 'Queue ended, leaving voice channel', config.emojis.success);
       await channel.send({ components: [container], flags: MessageFlags.IsPersistent | MessageFlags.IsComponentsV2 });
     }
-    return;
-  }
 
-  if (channel) {
-    const container = createSimpleContainerNoButtons('Queue Ended', 'Queue ended, leaving voice channel', config.emojis.success);
-    await channel.send({ components: [container], flags: MessageFlags.IsPersistent | MessageFlags.IsComponentsV2 });
-  }
-
-  player.destroy();
-});
+    player.destroy();
+  });
+}
 
 client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton()) {
